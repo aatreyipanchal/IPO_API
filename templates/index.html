@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPO Details Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            margin-top: 20px;
+        }
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        #companyInfo {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 4px;
+            display: none;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+            padding: 15px;
+            background-color: #fee;
+            border-radius: 4px;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+            color: #666;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f0f0f0;
+        }
+        .missing-value {
+            color: #999;
+            font-style: italic;
+        }
+        /* Alternating row colors for better readability */
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>IPO Details Viewer</h1>
+    
+    <div class="container">
+        <label for="companySelect">Select a Company:</label>
+        <select id="companySelect">
+            <option value="">-- Select a company --</option>
+        </select>
+        
+        <div id="loading" class="loading" style="display: none;">Loading data...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="companyInfo"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const companySelect = document.getElementById('companySelect');
+            const companyInfoDiv = document.getElementById('companyInfo');
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            
+            // Fetch the list of companies when the page loads
+            fetchCompanies();
+            
+            // Add event listener to the dropdown
+            companySelect.addEventListener('change', function() {
+                const selectedCompany = this.value;
+                if (selectedCompany) {
+                    fetchCompanyDetails(selectedCompany);
+                } else {
+                    companyInfoDiv.style.display = 'none';
+                }
+            });
+            
+            // Function to fetch companies
+            function fetchCompanies() {
+                loadingDiv.style.display = 'block';
+                errorDiv.style.display = 'none';
+                
+                fetch('/companies')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        loadingDiv.style.display = 'none';
+                        
+                        if (data.companies && Array.isArray(data.companies)) {
+                            // Sort companies alphabetically
+                            data.companies.sort();
+                            
+                            // Populate the dropdown
+                            data.companies.forEach(company => {
+                                const option = document.createElement('option');
+                                option.value = company;
+                                option.textContent = company;
+                                companySelect.appendChild(option);
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        loadingDiv.style.display = 'none';
+                        displayError('Failed to load companies. Please try again later.');
+                    });
+            }
+            
+            // Function to fetch company details
+            function fetchCompanyDetails(companyName) {
+                loadingDiv.style.display = 'block';
+                companyInfoDiv.style.display = 'none';
+                errorDiv.style.display = 'none';
+                
+                fetch(`/company-details?name=${encodeURIComponent(companyName)}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Company details not found');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        loadingDiv.style.display = 'none';
+                        
+                        // Log the data to console for debugging
+                        console.log("Company data:", data);
+                        
+                        displayCompanyInfo(data);
+                    })
+                    .catch(error => {
+                        loadingDiv.style.display = 'none';
+                        displayError('Failed to load company details: ' + error.message);
+                    });
+            }
+            
+            // Function to display company information
+            function displayCompanyInfo(data) {
+                companyInfoDiv.innerHTML = '';
+                
+                if (!data) {
+                    displayError('No data available for this company');
+                    return;
+                }
+                
+                // Create a table to display the data
+                const table = document.createElement('table');
+                
+                // Create header row
+                const headerRow = document.createElement('tr');
+                const keyHeader = document.createElement('th');
+                keyHeader.textContent = 'Field';
+                const valueHeader = document.createElement('th');
+                valueHeader.textContent = 'Value';
+                headerRow.appendChild(keyHeader);
+                headerRow.appendChild(valueHeader);
+                table.appendChild(headerRow);
+                
+                // Get all keys - we'll handle undefined values explicitly
+                const keys = Object.keys(data);
+                
+                // Sort keys alphabetically but put "Company Name" first if it exists
+                keys.sort((a, b) => {
+                    if (a === "Company Name") return -1;
+                    if (b === "Company Name") return 1;
+                    return a.localeCompare(b);
+                });
+                
+                // Add rows for each property
+                keys.forEach(key => {
+                    const row = document.createElement('tr');
+                    
+                    const keyCell = document.createElement('td');
+                    keyCell.textContent = key;
+                    
+                    const valueCell = document.createElement('td');
+                    
+                    // Handle different value types including null/undefined
+                    const value = data[key];
+                    if (value === null || value === undefined || value === "N/A" || value === "") {
+                        valueCell.textContent = "N/A";
+                        valueCell.className = "missing-value";
+                    } else {
+                        valueCell.textContent = value;
+                    }
+                    
+                    row.appendChild(keyCell);
+                    row.appendChild(valueCell);
+                    table.appendChild(row);
+                });
+                
+                companyInfoDiv.appendChild(table);
+                companyInfoDiv.style.display = 'block';
+            }
+            
+            // Function to display errors
+            function displayError(message) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
